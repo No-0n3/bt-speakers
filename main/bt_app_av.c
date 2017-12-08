@@ -42,7 +42,30 @@ void bt_app_a2d_cb(esp_a2d_cb_event_t event, esp_a2d_cb_param_t *param)
 
 void bt_app_a2d_data_cb(const uint8_t *data, uint32_t len)
 {
-    i2s_write_bytes(0, (const char *)data, len, portMAX_DELAY);
+#ifndef CONFIG_A2DP_SINK_OUTPUT_INTERNAL_DAC
+    i2s_write_bytes(I2S_NUM_0, (const char *)data, len, portMAX_DELAY);
+#else
+    // Scale 16bit data to 8 bit for a better signal in built-in DAC
+	for(int i = 0; i < len; i += 4) {
+		char buf[4];
+		int16_t hb = (data[i] << 8 | data[i+1]);
+		int16_t lb = (data[i+2] << 8 | data[i+3]);
+
+		hb /= 256;
+		hb += 128;
+		hb <<= 8;
+
+		lb /= 256;
+		lb += 128;
+		lb <<= 8;
+
+		memcpy(buf, &hb, 2);
+		memcpy(buf+2, &lb, 2);
+
+		i2s_push_sample(I2S_NUM_0, (const char *) buf, portMAX_DELAY);
+	}
+#endif
+
     if (++m_pkt_cnt % 100 == 0) {
         ESP_LOGE(BT_AV_TAG, "audio data pkt cnt %u", m_pkt_cnt);
     }
